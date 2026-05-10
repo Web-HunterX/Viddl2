@@ -1,114 +1,87 @@
 #!/usr/bin/env python3
 """
-تقسیم فایل به قطعات ۸۰ مگابایتی و تبدیل به زیپ رمزدار
-هنگام استخراج فایل اول، بقیه قطعات خودکار متصل می‌شن
+تبدیل فایل ویدیو به قطعات ۸۰ مگابایتی زیپ شده با رمز
+هنگام استخراج فایل اول، بقیه خودکار متصل می‌شوند
 """
 
 import os
 import sys
-import zipfile
 import subprocess
 from pathlib import Path
 
 def split_and_zip(file_path, part_size_mb=80, password="mkml00"):
     """
-    تبدیل فایل به زیپ چندتکه با رمز
+    تقسیم فایل به قطعات زیپ رمزدار
     """
     if not os.path.exists(file_path):
         print(f"❌ فایل {file_path} پیدا نشد")
         return False
     
-    file_size = os.path.getsize(file_path) / (1024 * 1024)  # MB
-    print(f"📊 حجم فایل اصلی: {file_size:.2f} MB")
-    
-    # محاسبه تعداد قطعات
-    part_size_bytes = part_size_mb * 1024 * 1024
-    num_parts = (os.path.getsize(file_path) + part_size_bytes - 1) // part_size_bytes
-    
-    print(f"📦 تقسیم به {num_parts} قطعه {part_size_mb} مگابایتی")
+    file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+    print(f"📊 حجم فایل: {file_size_mb:.2f} MB")
     
     base_name = os.path.splitext(file_path)[0]
+    zip_file = f"{base_name}.zip"
     
-    # روش: استفاده از زیپ اسپلیت (که موقع استخراج خودکار همه رو می‌خونه)
-    zip_path = f"{base_name}.zip"
+    # مرحله 1: ساخت زیپ رمزدار
+    print(f"🔐 ساخت زیپ با رمز {password}...")
+    cmd_zip = [
+        "zip",
+        "-P", password,
+        "-j",  # مسیرها را ذخیره نکن
+        zip_file,
+        file_path
+    ]
+    subprocess.run(cmd_zip, check=True)
     
-    # اول یه زیپ می‌سازیم کل فایل رو بذاریم توش
-    print(f"🔐 ساخت زیپ رمزدار...")
-    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-        zf.setpassword(password.encode())
-        zf.write(file_path, os.path.basename(file_path))
+    # مرحله 2: تقسیم زیپ به قطعات
+    print(f"✂️ تقسیم به قطعات {part_size_mb} مگابایتی...")
+    cmd_split = [
+        "split",
+        "-b", f"{part_size_mb}M",
+        zip_file,
+        f"{base_name}.zip.part-"
+    ]
+    subprocess.run(cmd_split, check=True)
     
-    # حالا زیپ رو تقسیم می‌کنیم با split (سیستمی)
-    print(f"✂️ تقسیم زیپ به قطعات...")
+    # مرحله 3: حذف زیپ اصلی
+    os.remove(zip_file)
     
-    # پاک کردن فایل‌های قبلی
-    for f in os.listdir('.'):
-        if f.startswith(f"{base_name}.zip."):
-            os.remove(f)
+    # مرحله 4: شماره‌گذاری مجدد قطعات
+    parts = sorted([f for f in os.listdir('.') if f.startswith(f"{base_name}.zip.part-")])
     
-    # استفاده از دستور split لینوکس
-    split_cmd = ["split", "-b", f"{part_size_mb}M", zip_path, f"{base_name}.zip."]
-    subprocess.run(split_cmd, check=True)
+    # تغییر نام برای خوانایی بهتر
+    for i, part in enumerate(parts, 1):
+        new_name = f"{base_name}.zip.{(i-1):03d}"
+        os.rename(part, new_name)
+        size_mb = os.path.getsize(new_name) / (1024 * 1024)
+        print(f"  📄 {new_name} - {size_mb:.2f} MB")
     
-    # حذف زیپ اصلی
-    os.remove(zip_path)
-    
-    # ایجاد فایل راهنما
-    readme_content = f"""# راهنمای استخراج
+    # مرحله 5: فایل راهنما
+    readme = f"""# راهنمای استخراج
 
-فایل‌های {base_name}.zip.aa, {base_name}.zip.ab, ... رو توی یه پوشه کنار هم قرار بدید.
+رمز تمام فایل‌ها: {password}
 
-سپس برای استخراج در لینوکس/مک:
-cat {base_name}.zip.* > {base_name}.zip
-unzip -P mkml00 {base_name}.zip
+روش استخراج در لینوکس/مک:
+    cat {base_name}.zip.* > {base_name}.zip
+    unzip -P {password} {base_name}.zip
 
-در ویندوز:
-- از نرم‌افزار 7-Zip استفاده کنید
-- فایل اول رو انتخاب کنید، رمز رو وارد کنید: mkml00
-- بقیه قطعات خودکار شناسایی می‌شن
+روش استخراج در ویندوز (با 7-Zip):
+    1. فایل {base_name}.zip.000 را انتخاب کنید
+    2. راست کلیک → 7-Zip → Extract Here
+    3. رمز {password} را وارد کنید
 
-رمز: mkml00
+توجه: برای استخراج فقط به فایل اول نیاز دارید، بقیه قطعات خودکار شناسایی می‌شوند.
 """
     
     with open(f"{base_name}_README.txt", "w") as f:
-        f.write(readme_content)
+        f.write(readme)
     
-    # لیست فایل‌های ساخته شده
-    parts = [f for f in os.listdir('.') if f.startswith(f"{base_name}.zip.")]
-    parts.sort()
-    
-    print(f"\n✅ {len(parts)} قطعه ساخته شد:")
-    for part in parts:
-        size_mb = os.path.getsize(part) / (1024 * 1024)
-        print(f"  📄 {part} - {size_mb:.2f} MB")
-    
-    print(f"\n📝 فایل راهنما: {base_name}_README.txt")
-    print(f"🔑 رمز: mkml00")
+    print(f"\n✅ {len(parts)} قطعه ساخته شد")
+    print(f"📝 فایل راهنما: {base_name}_README.txt")
+    print(f"🔑 رمز: {password}")
     
     return True
-
-def create_zip_parts_with_python(file_path, part_size_mb=80, password="mkml00"):
-    """
-    روش جایگزین با پایتون خالص (بدون دستور split)
-    """
-    import struct
-    
-    part_size = part_size_mb * 1024 * 1024
-    base_name = os.path.splitext(file_path)[0]
-    
-    with open(file_path, 'rb') as f:
-        data = f.read()
-    
-    # تقسیم دیتا به قطعات
-    parts = []
-    for i in range(0, len(data), part_size):
-        parts.append(data[i:i+part_size])
-    
-    # هر قطعه رو زیپ می‌کنیم (ولی این روش کمتر کاربردیه)
-    # این روش ساده‌تر کار می‌کنه ولی موقع استخراج باید همه رو دانلود کنی
-    
-    print("⚠️ این روش پیچیده‌تره، روش split لینوکس بهتر کار می‌کنه")
-    return False
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
@@ -120,11 +93,8 @@ if __name__ == "__main__":
     part_size = int(sys.argv[2]) if len(sys.argv) > 2 else 80
     password = sys.argv[3] if len(sys.argv) > 3 else "mkml00"
     
-    success = split_and_zip(video_file, part_size, password)
-    
-    if success:
-        print("\n🎉 عملیات با موفقیت انجام شد!")
-        print("📁 فایل‌ها در پوشه جاری آماده آپلود هستند")
+    if split_and_zip(video_file, part_size, password):
+        print("\n🎉 عملیات موفق! فایل‌ها آماده آپلود هستند.")
     else:
         print("\n❌ خطا در فرآیند")
         sys.exit(1)
