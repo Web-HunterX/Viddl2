@@ -1,0 +1,68 @@
+name: Download and Split Video
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: 'لینک ویدیو'
+        required: true
+        type: string
+      output_name:
+        description: 'نام فایل خروجی (بدون پسوند)'
+        required: false
+        default: 'video_output'
+        type: string
+
+jobs:
+  download-and-split:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+    
+    - name: Install FFmpeg
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ffmpeg
+    
+    - name: Install Python dependencies
+      run: |
+        pip install requests m3u8 pycryptodome yt-dlp
+    
+    - name: Download video with highest quality
+      run: |
+        python download_video.py "${{ github.event.inputs.video_url }}" "${{ github.event.inputs.output_name }}"
+      env:
+        COOKIES: ${{ secrets.VIDEO_SITE_COOKIES }}
+    
+    - name: Split and create password-protected ZIP parts
+      run: |
+        python split_and_zip.py "${{ github.event.inputs.output_name }}.mp4" 80 "mkml00"
+    
+    - name: Move to flt folder
+      run: |
+        mkdir -p flt
+        mv *.zip *.zip.?? flt/ 2>/dev/null || true
+        mv *.part* flt/ 2>/dev/null || true
+        ls -lah flt/
+    
+    - name: Upload to repository
+      uses: actions/upload-artifact@v4
+      with:
+        name: video-split-parts
+        path: flt/
+        retention-days: 7
+    
+    - name: Commit and push to repository
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add flt/
+        git commit -m "Add split video parts [skip ci]" || echo "Nothing to commit"
+        git push
