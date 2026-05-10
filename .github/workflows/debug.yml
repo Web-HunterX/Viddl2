@@ -1,0 +1,39 @@
+name: Debug Video - Find Format
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: 'لینک صفحه ویدیو'
+        required: true
+        type: string
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+    
+    - name: Install requests
+      run: pip install requests
+    
+    - name: Run debug script
+      run: |
+        python debug_video.py "${{ github.event.inputs.video_url }}"
+      env:
+        COOKIES: ${{ secrets.VIDEO_SITE_COOKIES }}
+    
+    - name: Upload debug results
+      uses: actions/upload-artifact@v4
+      with:
+        name: debug-output
+        path: |
+          debug_result.json
+        retention-days: 7
