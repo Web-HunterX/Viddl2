@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       video_url:
-        description: 'لینک ویدیو'
+        description: 'لینک ویدیو (از pimpbunny.com)'
         required: true
         type: string
       output_name:
-        description: 'نام فایل خروجی (بدون پسوند)'
+        description: 'نام فایل خروجی'
         required: false
         default: 'video_output'
         type: string
@@ -33,23 +33,31 @@ jobs:
     
     - name: Install Python dependencies
       run: |
-        pip install requests m3u8 pycryptodome yt-dlp
+        pip install requests
     
-    - name: Download video with highest quality
+    - name: Download video with direct method
       run: |
         python download_video.py "${{ github.event.inputs.video_url }}" "${{ github.event.inputs.output_name }}"
       env:
         COOKIES: ${{ secrets.VIDEO_SITE_COOKIES }}
     
+    - name: Check if download succeeded
+      run: |
+        if [ ! -f download_success.txt ]; then
+          echo "❌ دانلود انجام نشد"
+          exit 1
+        fi
+        VIDEO_FILE=$(cat download_success.txt)
+        echo "VIDEO_FILE=$VIDEO_FILE" >> $GITHUB_ENV
+    
     - name: Split and create password-protected ZIP parts
       run: |
-        python split_and_zip.py "${{ github.event.inputs.output_name }}.mp4" 80 "mkml00"
+        python split_and_zip.py "$VIDEO_FILE" 80 "mkml00"
     
     - name: Move to flt folder
       run: |
         mkdir -p flt
-        mv *.zip *.zip.?? flt/ 2>/dev/null || true
-        mv *.part* flt/ 2>/dev/null || true
+        mv *.zip *.zip.* *.txt flt/ 2>/dev/null || true
         ls -lah flt/
     
     - name: Upload to repository
